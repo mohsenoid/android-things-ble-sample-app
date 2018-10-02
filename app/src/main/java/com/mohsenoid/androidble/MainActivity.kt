@@ -44,6 +44,8 @@ class MainActivity : AppCompatActivity() {
 
     private var device: RxBleDevice? = null
 
+    private var currentMTU: Int = DEFAULT_MTU
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -172,6 +174,9 @@ class MainActivity : AppCompatActivity() {
     private fun mayDisconnect() {
         connectionStateDisposable?.apply { if (!isDisposed) dispose() }
         connectionDisposable?.apply { if (!isDisposed) dispose() }
+        bleConnection = null
+        device = null
+        currentMTU = DEFAULT_MTU
     }
 
     private fun startConnecting(device: RxBleDevice) {
@@ -180,7 +185,7 @@ class MainActivity : AppCompatActivity() {
         mayDisconnect()
 
         connectionStateDisposable = device.observeConnectionStateChanges()
-//                .observeOn(AndroidSchedulers.mainThread())
+                .observeOn(AndroidSchedulers.mainThread())
                 .subscribeBy(
                         onNext = { connectionState: RxBleConnection.RxBleConnectionState ->
                             when (connectionState) {
@@ -202,6 +207,7 @@ class MainActivity : AppCompatActivity() {
                 .subscribeBy(
                         onNext = { bleConnection ->
                             this@MainActivity.bleConnection = bleConnection
+                            requestMTU()
                             readCounter()
                             registerCounter()
                         },
@@ -211,7 +217,20 @@ class MainActivity : AppCompatActivity() {
                         onComplete = {
                             Timber.i("connection complete!")
                         })
+    }
 
+    private fun requestMTU() {
+        bleConnection?.apply {
+            requestMtu(MAX_MTU)
+                    .subscribeBy(
+                            onSuccess = { mtu ->
+                                Timber.i("new MTU: $mtu")
+                                currentMTU = mtu
+                            },
+                            onError = { throwable ->
+                                Timber.e(throwable)
+                            })
+        }
     }
 
     private fun readCounter() {
@@ -285,16 +304,16 @@ class MainActivity : AppCompatActivity() {
                                 observable
                                         .observeOn(AndroidSchedulers.mainThread())
                                         .subscribeBy(
-                                        onNext = { value ->
-                                            Timber.i("counter value: ${value[0].toInt()}")
-                                            tvCounter.text = value[0].toInt().toString()
-                                        },
-                                        onError = { throwable ->
-                                            Timber.e(throwable)
-                                        },
-                                        onComplete = {
-                                            Timber.i("Indication value complete!")
-                                        })
+                                                onNext = { value ->
+                                                    Timber.i("counter value: ${value[0].toInt()}")
+                                                    tvCounter.text = value[0].toInt().toString()
+                                                },
+                                                onError = { throwable ->
+                                                    Timber.e(throwable)
+                                                },
+                                                onComplete = {
+                                                    Timber.i("Indication value complete!")
+                                                })
 
                             },
                             onError = { throwable ->
@@ -337,5 +356,7 @@ class MainActivity : AppCompatActivity() {
         private val DESCRIPTOR_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
         private const val SCAN_TIMEOUT: Long = 5_000
+        private const val DEFAULT_MTU: Int = 23
+        private const val MAX_MTU: Int = 517
     }
 }
